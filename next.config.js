@@ -4,7 +4,7 @@ const nextConfig = {
   output: "standalone",
 
   // Prevent SSR of browser-only SDK
-  transpilePackages: ["@heygen/streaming-avatar"],
+  transpilePackages: ["import { StreamingAvatar }"],
 
   // Allow streaming responses (needed for WebRTC headers)
   async headers() {
