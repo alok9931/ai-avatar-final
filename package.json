@@ -11,7 +11,7 @@
     "next": "14.2.0",
     "react": "^18",
     "react-dom": "^18",
-    "@heygen/streaming-avatar": "^2.1.0",
+    "import { StreamingAvatar }": "^2.1.0",
     "openai": "^4.47.1",
     "firebase": "^10.12.0",
     "livekit-client": "^2.1.3",
