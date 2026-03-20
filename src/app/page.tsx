@@ -81,7 +81,6 @@ export default function WebinarPage() {
 
   const { status, isSpeaking, isMuted, videoRef, startSession, speak, interrupt, toggleMute, endSession } =
     useLiveAvatar({
-      apiKey: "", // Fetched server-side via /api/heygen-token
       avatarId: process.env.NEXT_PUBLIC_AVATAR_ID || "",
       systemPrompt: process.env.NEXT_PUBLIC_AVATAR_PERSONA,
       onError: (err) => console.error("Avatar error:", err),

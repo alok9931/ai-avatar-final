@@ -5,7 +5,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 export type AvatarStatus = "idle" | "connecting" | "ready" | "speaking" | "muted" | "error";
 
 interface UseLiveAvatarOptions {
-  apiKey: string;
   avatarId: string;
   voiceId?: string;
   systemPrompt?: string;
@@ -13,7 +12,6 @@ interface UseLiveAvatarOptions {
 }
 
 export function useLiveAvatar({
-  apiKey,
   avatarId,
   voiceId,
   systemPrompt,
@@ -24,44 +22,41 @@ export function useLiveAvatar({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const avatarRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const sessionTokenRef = useRef<string | null>(null);
 
-  // Fetch a session token from HeyGen
+  // Fetch session token securely from our own API route (keeps HeyGen key server-side)
   const getSessionToken = useCallback(async () => {
-    const res = await fetch("https://api.heygen.com/v1/streaming.create_token", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-    });
+    const res = await fetch("/api/heygen-token", { method: "POST" });
     const data = await res.json();
-    if (!data.data?.token) throw new Error("Failed to get session token");
-    return data.data.token;
-  }, [apiKey]);
+    if (!data.token) throw new Error(data.error || "Failed to get session token");
+    return data.token as string;
+  }, []);
 
   // Start the avatar WebRTC session
   const startSession = useCallback(async () => {
     try {
       setStatus("connecting");
 
-      // Dynamically import to avoid SSR issues
-      const { StreamingAvatar, StreamingEvents, AvatarQuality, TaskType } = await import(
-        "@heygen/streaming-avatar"
-      );
+      // Dynamic import avoids SSR issues — SDK uses browser APIs
+      const StreamingAvatarModule = await import("@heygen/streaming-avatar");
+
+      // SDK v2.x uses a default export for the class
+      const StreamingAvatar = StreamingAvatarModule.default ?? StreamingAvatarModule.StreamingAvatar;
+      const StreamingEvents = StreamingAvatarModule.StreamingEvents;
+      const AvatarQuality = StreamingAvatarModule.AvatarQuality;
+
+      if (!StreamingAvatar) throw new Error("StreamingAvatar class not found in SDK — check SDK version");
 
       const token = await getSessionToken();
-      sessionTokenRef.current = token;
-
       const avatar = new StreamingAvatar({ token });
       avatarRef.current = avatar;
 
-      // Hook up events
+      // Events
       avatar.on(StreamingEvents.AVATAR_START_TALKING, () => setIsSpeaking(true));
       avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => setIsSpeaking(false));
       avatar.on(StreamingEvents.STREAM_READY, (event: any) => {
-        if (videoRef.current && event.detail) {
-          videoRef.current.srcObject = event.detail;
+        const stream = event?.detail ?? event;
+        if (videoRef.current && stream) {
+          videoRef.current.srcObject = stream;
           videoRef.current.play().catch(console.error);
         }
         setStatus("ready");
@@ -83,16 +78,17 @@ export function useLiveAvatar({
       setStatus("error");
       onError?.(err.message || "Failed to start avatar session");
     }
-  }, [apiKey, avatarId, voiceId, systemPrompt, getSessionToken, onError]);
+  }, [avatarId, voiceId, systemPrompt, getSessionToken, onError]);
 
   // Speak a text string
   const speak = useCallback(async (text: string) => {
     if (!avatarRef.current || isMuted) return;
     try {
-      const { TaskType } = await import("@heygen/streaming-avatar");
+      const mod = await import("@heygen/streaming-avatar");
+      const TaskType = mod.TaskType;
       await avatarRef.current.speak({
         text,
-        task_type: TaskType.TALK,
+        task_type: TaskType?.TALK ?? "talk",
       });
     } catch (err: any) {
       console.error("Speak error:", err);

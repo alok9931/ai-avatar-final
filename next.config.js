@@ -3,9 +3,8 @@ const nextConfig = {
   // Required for Hostinger Node.js hosting
   output: "standalone",
 
-  experimental: {
-    serverComponentsExternalPackages: ["@heygen/streaming-avatar"],
-  },
+  // Prevent SSR of browser-only SDK
+  transpilePackages: ["@heygen/streaming-avatar"],
 
   // Allow streaming responses (needed for WebRTC headers)
   async headers() {
