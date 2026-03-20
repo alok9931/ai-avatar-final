@@ -1,8 +1,9 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy init — client is created at request time so build doesn't need the key
+function getClient() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 interface GenerateAnswerOptions {
   question: string;
@@ -27,7 +28,7 @@ Do NOT use markdown, bullet points, or special characters in your response — p
     ? `\n\nCurrent slide context: ${slideContext}`
     : "";
 
-  const completion = await openai.chat.completions.create({
+  const completion = await getClient().chat.completions.create({
     model: "gpt-4o",
     max_tokens: 200,
     messages: [
@@ -59,7 +60,7 @@ export async function generateSlideScript({
 }: GenerateScriptOptions): Promise<string> {
   const wordsTarget = Math.floor(durationSeconds * 2.5); // ~150wpm speaking rate
 
-  const completion = await openai.chat.completions.create({
+  const completion = await getClient().chat.completions.create({
     model: "gpt-4o",
     max_tokens: 300,
     messages: [

@@ -23,7 +23,6 @@ export function useLiveAvatar({
   const avatarRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Fetch session token securely from our own API route (keeps HeyGen key server-side)
   const getSessionToken = useCallback(async () => {
     const res = await fetch("/api/heygen-token", { method: "POST" });
     const data = await res.json();
@@ -31,47 +30,41 @@ export function useLiveAvatar({
     return data.token as string;
   }, []);
 
-  // Start the avatar WebRTC session
   const startSession = useCallback(async () => {
     try {
       setStatus("connecting");
 
-      // Dynamic import avoids SSR issues — SDK uses browser APIs
-      const StreamingAvatarModule = await import("@heygen/streaming-avatar");
+      // Import the module — StreamingAvatar is the DEFAULT export in v2.x
+      // AvatarQuality, StreamingEvents, TaskType are NAMED exports
+      import("@heygen/streaming-avatar").then(async (mod) => {
+        const StreamingAvatar = mod.default;
+        const { AvatarQuality, StreamingEvents, TaskType } = mod;
 
-      // SDK v2.x uses a default export for the class
-      const StreamingAvatar = StreamingAvatarModule.default ?? StreamingAvatarModule.StreamingAvatar;
-      const StreamingEvents = StreamingAvatarModule.StreamingEvents;
-      const AvatarQuality = StreamingAvatarModule.AvatarQuality;
+        const token = await getSessionToken();
+        const avatar = new StreamingAvatar({ token });
+        avatarRef.current = avatar;
 
-      if (!StreamingAvatar) throw new Error("StreamingAvatar class not found in SDK — check SDK version");
+        avatar.on(StreamingEvents.AVATAR_START_TALKING, () => setIsSpeaking(true));
+        avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => setIsSpeaking(false));
+        avatar.on(StreamingEvents.STREAM_READY, (event: any) => {
+          const stream = event?.detail ?? event;
+          if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(console.error);
+          }
+          setStatus("ready");
+        });
+        avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
+          setStatus("idle");
+          setIsSpeaking(false);
+        });
 
-      const token = await getSessionToken();
-      const avatar = new StreamingAvatar({ token });
-      avatarRef.current = avatar;
-
-      // Events
-      avatar.on(StreamingEvents.AVATAR_START_TALKING, () => setIsSpeaking(true));
-      avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => setIsSpeaking(false));
-      avatar.on(StreamingEvents.STREAM_READY, (event: any) => {
-        const stream = event?.detail ?? event;
-        if (videoRef.current && stream) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(console.error);
-        }
-        setStatus("ready");
-      });
-      avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
-        setStatus("idle");
-        setIsSpeaking(false);
-      });
-
-      await avatar.createStartAvatar({
-        quality: AvatarQuality.High,
-        avatarName: avatarId,
-        voice: voiceId ? { voiceId } : undefined,
-        knowledgeBase: systemPrompt,
-        disableIdleTimeout: true,
+        await avatar.createStartAvatar({
+          quality: AvatarQuality.High,
+          avatarName: avatarId,
+          voice: voiceId ? { voiceId } : undefined,
+          knowledgeBase: systemPrompt,
+        });
       });
     } catch (err: any) {
       console.error("LiveAvatar error:", err);
@@ -80,34 +73,21 @@ export function useLiveAvatar({
     }
   }, [avatarId, voiceId, systemPrompt, getSessionToken, onError]);
 
-  // Speak a text string
   const speak = useCallback(async (text: string) => {
     if (!avatarRef.current || isMuted) return;
     try {
-      const mod = await import("@heygen/streaming-avatar");
-      const TaskType = mod.TaskType;
-      await avatarRef.current.speak({
-        text,
-        task_type: TaskType?.TALK ?? "talk",
-      });
+      const { TaskType } = await import("@heygen/streaming-avatar");
+      await avatarRef.current.speak({ text, task_type: TaskType.TALK });
     } catch (err: any) {
       console.error("Speak error:", err);
     }
   }, [isMuted]);
 
-  // Interrupt current speech
   const interrupt = useCallback(async () => {
-    if (!avatarRef.current) return;
-    try {
-      await avatarRef.current.interrupt();
-    } catch (err: any) {
-      console.error("Interrupt error:", err);
-    }
+    try { await avatarRef.current?.interrupt(); } catch {}
   }, []);
 
-  // Toggle mute
   const toggleMute = useCallback(async () => {
-    if (!avatarRef.current) return;
     if (isMuted) {
       setIsMuted(false);
       setStatus(isSpeaking ? "speaking" : "ready");
@@ -118,37 +98,16 @@ export function useLiveAvatar({
     }
   }, [isMuted, isSpeaking, interrupt]);
 
-  // End session
   const endSession = useCallback(async () => {
-    if (!avatarRef.current) return;
-    try {
-      await avatarRef.current.stopAvatar();
-    } catch (err: any) {
-      console.error("Stop error:", err);
-    }
+    try { await avatarRef.current?.stopAvatar(); } catch {}
     avatarRef.current = null;
     setStatus("idle");
     setIsSpeaking(false);
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      if (avatarRef.current) {
-        avatarRef.current.stopAvatar().catch(() => {});
-      }
-    };
+    return () => { avatarRef.current?.stopAvatar().catch(() => {}); };
   }, []);
 
-  return {
-    status,
-    isSpeaking,
-    isMuted,
-    videoRef,
-    startSession,
-    speak,
-    interrupt,
-    toggleMute,
-    endSession,
-  };
+  return { status, isSpeaking, isMuted, videoRef, startSession, speak, interrupt, toggleMute, endSession };
 }

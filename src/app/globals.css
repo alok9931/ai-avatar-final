@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root {
+  --font-dm-sans: 'DM Sans', sans-serif;
+  --font-dm-mono: 'DM Mono', monospace;
+}
+
+:root {
   --bg: #0D0F14;
   --surface: #161820;
   --card: #1E2130;
